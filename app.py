@@ -77,7 +77,7 @@ def parse_caption(caption):
 
     return extracted
 
-# --- 楽天API連携（変更なし） ---
+# --- 楽天API連携（在庫ありのみフィルター追加） ---
 @st.cache_data(ttl=3600)
 def search_rakuten_items(keyword="", min_price=None, max_price=None, sort_type="standard"):
     url = "https://app.rakuten.co.jp/services/api/IchibaItem/Search/20170706"
@@ -96,6 +96,7 @@ def search_rakuten_items(keyword="", min_price=None, max_price=None, sort_type="
         "format": "json",
         "imageFlag": 1,
         "hits": 30,
+        "availability": 1, # ★重要: これを追加することで「在庫あり」のみに限定されます
         "sort": sort_params.get(sort_type, "standard")
     }
     
@@ -191,14 +192,11 @@ def main():
             white-space: pre-wrap;
         }
         
-        /* --- ★修正: レスポンシブグリッド --- */
-        /* PCはデフォルト（4列）、スマホ（幅640px以下）は2列にする設定 */
+        /* レスポンシブグリッド: PC4列 / スマホ2列 */
         @media (max-width: 640px) {
-            /* カラムのコンテナを折り返し可能にする */
             div[data-testid="stHorizontalBlock"] {
                 flex-wrap: wrap !important;
             }
-            /* 各カラムの幅を50%（正確には隙間考慮して48%程度）にする */
             div[data-testid="stColumn"] {
                 flex: 0 0 48% !important;
                 max-width: 48% !important;
@@ -206,7 +204,7 @@ def main():
             }
         }
 
-        /* スマホ時の文字サイズ微調整 */
+        /* スマホ時の文字サイズ調整 */
         @media (max-width: 640px) {
             .price-tag { font-size: 0.9rem; }
             p, span, div { font-size: 0.8rem; }
@@ -217,7 +215,7 @@ def main():
 
     st.title(f"🛍️ COMRADE 商品カタログ")
 
-    # --- 検索メニュー（上部に移動） ---
+    # --- 検索メニュー（上部固定） ---
     with st.container(border=True):
         st.write("🔍 **検索条件**")
         
@@ -235,7 +233,6 @@ def main():
         with c_btm2:
             price_max = st.number_input("最高価格 (円)", value=1000000, step=10000)
         with c_btm3:
-            # ボタンを少し下にずらして配置合わせ（簡易的）
             st.write("") 
             st.write("")
             search_btn = st.button("商品を検索", use_container_width=True)
@@ -253,7 +250,6 @@ def main():
         st.markdown(f"**全 {len(df)} 件** を表示中")
         st.divider()
         
-        # PCでは4列、スマホではCSSで2列に折り返される
         cols_per_row = 4
         
         for i in range(0, len(df), cols_per_row):
