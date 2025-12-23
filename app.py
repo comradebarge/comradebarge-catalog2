@@ -8,11 +8,10 @@ import time
 APP_ID = "1062630541952752738"    # アプリID
 SHOP_CODE = "comradebarge"        # ショップコード
 
-# --- テキスト処理関数（修正版） ---
+# --- テキスト処理関数（変更なし） ---
 def parse_caption(caption):
     """
     商品説明文から情報を抽出する関数
-    修正点: 「状態」というキーワードが「状態ランク」と誤認しないよう削除しました
     """
     if not caption:
         return {}
@@ -20,16 +19,13 @@ def parse_caption(caption):
     text = re.sub(r'<br\s*/?>', '\n', str(caption), flags=re.IGNORECASE)
     text = re.sub(r'<[^>]+>', '', text)
     
-    # 抽出したい項目の定義
     target_keywords = {
         "表記サイズ": ["表記サイズ", "サイズ表記"],
         "実寸サイズ": ["実寸サイズ", "実寸"],
         "状態ランク": ["状態ランク", "商品ランク"], 
-        # ★修正: ここから「状態」を削除しました
         "状態説明":   ["状態説明", "コンディション"]
     }
     
-    # 区切りとなるその他のキーワード
     stop_keywords = ["素材", "色", "カラー", "付属品", "備考", "管理番号", "商品番号", "注意事項", "状態ランク注意事項"]
     
     all_keywords = []
@@ -37,10 +33,8 @@ def parse_caption(caption):
         all_keywords.extend(v_list)
     all_keywords.extend(stop_keywords)
     
-    # テキスト内のキーワード位置を特定
     positions = []
     for kw in all_keywords:
-        # 見出しの前にある記号などを考慮して検索
         matches = list(re.finditer(f"(?:^|\\s|■|】|\\|){re.escape(kw)}", text))
         for m in matches:
             positions.append({
@@ -53,10 +47,8 @@ def parse_caption(caption):
     
     extracted = {}
     
-    # 各項目の内容を抽出
     for target_key, aliases in target_keywords.items():
         current_pos = None
-        # 最も適したキーワード位置を探す
         for p in positions:
             if p["name"] in aliases:
                 current_pos = p
@@ -65,20 +57,16 @@ def parse_caption(caption):
         if current_pos:
             start_index = current_pos["end"]
             end_index = len(text)
-            
-            # 次のキーワードが始まる場所を終了位置とする
             for p in positions:
                 if p["start"] > start_index:
                     end_index = p["start"]
                     break
             
             content = text[start_index:end_index]
-            
-            # クリーニング処理
             content = content.strip()
             content = re.sub(r'^[:：\]】]+', '', content).strip()
             content = re.sub(r'[\[【]+$', '', content).strip()
-            content = content.replace('"', '') # 不要なダブルクォーテーション削除
+            content = content.replace('"', '')
             
             if not content or content in ["【】", "[]", "()"]:
                 extracted[target_key] = "-"
@@ -89,7 +77,7 @@ def parse_caption(caption):
 
     return extracted
 
-# --- 楽天API連携（全件取得対応） ---
+# --- 楽天API連携（変更なし） ---
 @st.cache_data(ttl=3600)
 def search_rakuten_items(keyword="", min_price=None, max_price=None, sort_type="standard"):
     url = "https://app.rakuten.co.jp/services/api/IchibaItem/Search/20170706"
@@ -116,7 +104,7 @@ def search_rakuten_items(keyword="", min_price=None, max_price=None, sort_type="
 
     all_items = []
     page = 1
-    max_pages = 30 # 最大取得ページ数（安全のため制限）
+    max_pages = 30
     
     progress_text = "データを取得中..."
     my_bar = st.progress(0, text=progress_text)
@@ -203,35 +191,56 @@ def main():
             white-space: pre-wrap;
         }
         
-        /* スマホ用4列強制CSS */
-        div[data-testid="stHorizontalBlock"] {
-            flex-wrap: nowrap !important;
-            overflow-x: auto;
-        }
-        div[data-testid="stColumn"] {
-            flex: 1 1 0px !important;
-            min-width: 0px !important;
-            padding: 0 2px !important;
-        }
+        /* --- ★修正: レスポンシブグリッド --- */
+        /* PCはデフォルト（4列）、スマホ（幅640px以下）は2列にする設定 */
         @media (max-width: 640px) {
-            .price-tag { font-size: 0.8rem; }
-            p, span, div { font-size: 0.7rem; }
-            button { padding: 0.2rem !important; font-size: 0.7rem !important; }
+            /* カラムのコンテナを折り返し可能にする */
+            div[data-testid="stHorizontalBlock"] {
+                flex-wrap: wrap !important;
+            }
+            /* 各カラムの幅を50%（正確には隙間考慮して48%程度）にする */
+            div[data-testid="stColumn"] {
+                flex: 0 0 48% !important;
+                max-width: 48% !important;
+                min-width: 45% !important;
+            }
+        }
+
+        /* スマホ時の文字サイズ微調整 */
+        @media (max-width: 640px) {
+            .price-tag { font-size: 0.9rem; }
+            p, span, div { font-size: 0.8rem; }
+            button { padding: 0.2rem !important; font-size: 0.8rem !important; }
         }
         </style>
     """, unsafe_allow_html=True)
 
     st.title(f"🛍️ COMRADE 商品カタログ")
 
-    with st.sidebar:
-        st.header("🔍 検索メニュー")
-        keyword = st.text_input("キーワード", "")
-        price_min = st.number_input("下限 (円)", value=0, step=1000)
-        price_max = st.number_input("上限 (円)", value=1000000, step=10000)
-        sort_order = st.selectbox("並び順", ["標準", "価格が高い順", "価格が安い順", "新着順"])
-        st.divider()
-        search_btn = st.button("検索")
+    # --- 検索メニュー（上部に移動） ---
+    with st.container(border=True):
+        st.write("🔍 **検索条件**")
+        
+        # 1行目: キーワードと並び順
+        c_top1, c_top2 = st.columns([2, 1])
+        with c_top1:
+            keyword = st.text_input("キーワード", placeholder="例: コート、バッグ", label_visibility="collapsed")
+        with c_top2:
+            sort_order = st.selectbox("並び順", ["標準", "価格が高い順", "価格が安い順", "新着順"], label_visibility="collapsed")
+        
+        # 2行目: 価格帯と検索ボタン
+        c_btm1, c_btm2, c_btm3 = st.columns([1, 1, 1])
+        with c_btm1:
+            price_min = st.number_input("最低価格 (円)", value=0, step=1000)
+        with c_btm2:
+            price_max = st.number_input("最高価格 (円)", value=1000000, step=10000)
+        with c_btm3:
+            # ボタンを少し下にずらして配置合わせ（簡易的）
+            st.write("") 
+            st.write("")
+            search_btn = st.button("商品を検索", use_container_width=True)
 
+    # 検索実行
     if search_btn or 'df_items' not in st.session_state:
         df = search_rakuten_items(keyword, price_min, price_max, sort_order)
         st.session_state['df_items'] = df
@@ -244,7 +253,9 @@ def main():
         st.markdown(f"**全 {len(df)} 件** を表示中")
         st.divider()
         
+        # PCでは4列、スマホではCSSで2列に折り返される
         cols_per_row = 4
+        
         for i in range(0, len(df), cols_per_row):
             row_items = df.iloc[i : i + cols_per_row]
             cols = st.columns(cols_per_row)
